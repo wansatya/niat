@@ -1,0 +1,47 @@
+# Build directories
+/target/
+/build/
+/dist/
+
+# Binary build artifacts, kernel, and disk images
+*.iso
+*.img
+*.cpio
+*.cpio.gz
+bzImage
+vmlinuz
+
+# Compressed archives
+*.tar
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.zip
+*.7z
+
+# Compiled binaries and libraries
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.elf
+*.bin
+*.rlib
+*.rmeta
+
+# Environment, IDE, and OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+scratch/

@@ -1,0 +1,6 @@
+NIAT_INSTALLER_VERSION = 0.1.0
+NIAT_INSTALLER_SITE = $(BR2_EXTERNAL_NIAT_PATH)/../../crates/niat-installer
+NIAT_INSTALLER_SITE_METHOD = local
+NIAT_INSTALLER_DEPENDENCIES = host-rustc
+
+$(eval $(cargo-package))

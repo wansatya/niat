@@ -1,0 +1,6 @@
+config BR2_PACKAGE_MCP_CLIENT
+    bool "mcp-client"
+    depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+    select BR2_PACKAGE_HOST_RUSTC
+    help
+      NIAT MCP Client - Model Context Protocol client engine.

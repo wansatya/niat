@@ -1,0 +1,21 @@
+[system]
+hostname = "niat"
+log_level = "info"
+
+[model]
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o"
+timeout_seconds = 30
+max_tokens = 4096
+
+[agent]
+max_tool_iterations = 15
+system_prompt = "You are NIAT, an intent-driven operating system assistant. You translate user intent into safe, controlled system operations. Always explain what you will do before acting. Never perform destructive operations without explicit user approval."
+
+[security]
+require_confirmation = true
+allow_raw_shell = false
+
+[network]
+dhcp = true
+check_connectivity = true

@@ -1,0 +1,22 @@
+#!/bin/sh
+# S10mdev — Device node manager
+
+case "$1" in
+    start)
+        echo "Starting mdev..."
+        if [ -d /proc/sys/kernel ]; then
+            echo /sbin/mdev > /proc/sys/kernel/hotplug 2>/dev/null || true
+        fi
+        mdev -s 2>/dev/null || true
+        ;;
+    stop)
+        ;;
+    restart|reload)
+        mdev -s
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+exit 0

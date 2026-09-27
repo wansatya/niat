@@ -1,0 +1,29 @@
+#!/bin/sh
+# /etc/init.d/rcS — System initialization script
+
+echo "Initializing NIAT OS..."
+
+# Mount essential virtual filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /dev/shm
+mount -t tmpfs tmpfs /tmp
+mount -t tmpfs tmpfs /run
+
+# Set hostname
+if [ -f /etc/hostname ]; then
+    hostname -F /etc/hostname
+fi
+
+# Run sysinit scripts in order
+for s in /etc/init.d/S[0-9]*; do
+    if [ -x "$s" ]; then
+        echo "Starting $s..."
+        "$s" start
+    fi
+done
+
+echo "NIAT OS boot sequence complete."

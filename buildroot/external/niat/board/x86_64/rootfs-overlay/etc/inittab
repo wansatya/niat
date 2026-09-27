@@ -1,0 +1,12 @@
+# /etc/inittab for NIAT OS
+::sysinit:/etc/init.d/rcS
+
+# TTY1: Primary NIAT TUI interface (with auto installer detection)
+tty1::respawn:/bin/sh -c "export TERM=linux; clear 2>/dev/null || printf '\033c\033[2J\033[3J\033[H'; if grep -q 'niat.installer=1' /proc/cmdline; then /usr/bin/niat-installer; else /usr/bin/niat-tui; fi"
+
+# TTY2: Standard Fallback / Recovery Shell
+tty2::respawn:/sbin/getty -L tty2 115200 vt100
+
+# Logging & reboot actions
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r

@@ -1,0 +1,35 @@
+#!/bin/sh
+# S40network — Network interface auto-configuration
+
+case "$1" in
+    start)
+        echo "Configuring network interfaces..."
+        # Bring up loopback
+        ifconfig lo 127.0.0.1 up
+
+        # Bring up first available ethernet interface
+        for iface in $(ls /sys/class/net/ 2>/dev/null); do
+            if [ "$iface" != "lo" ]; then
+                echo "Bringing up $iface..."
+                ip link set "$iface" up 2>/dev/null || ifconfig "$iface" up 2>/dev/null
+                # Start DHCP client in background
+                udhcpc -i "$iface" -b -q -s /usr/share/udhcpc/default.script 2>/dev/null &
+                break
+            fi
+        done
+        ;;
+    stop)
+        echo "Stopping network..."
+        killall udhcpc 2>/dev/null || true
+        ;;
+    restart)
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+exit 0

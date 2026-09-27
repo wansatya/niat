@@ -1,0 +1,29 @@
+# NIAT Security & Permission Policy Model
+
+[policy]
+default_action = "confirm"
+audit_log = "/var/log/niat/security.log"
+
+[tools.safe]
+auto_execute = true
+tools = [
+    "read_file",
+    "list_directory",
+    "search_files",
+    "get_system_info",
+    "get_network_status"
+]
+
+[tools.confirm]
+require_prompt = true
+tools = [
+    "write_file",
+    "run_command",
+    "manage_service"
+]
+
+[tools.dangerous]
+strict_confirm = true
+tools = [
+    "partition_disk"
+]

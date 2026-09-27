@@ -1,0 +1,6 @@
+menu "NIAT Packages"
+    source "$BR2_EXTERNAL_NIAT_PATH/package/agent-kernel/Config.in"
+    source "$BR2_EXTERNAL_NIAT_PATH/package/niat-tui/Config.in"
+    source "$BR2_EXTERNAL_NIAT_PATH/package/mcp-client/Config.in"
+    source "$BR2_EXTERNAL_NIAT_PATH/package/niat-installer/Config.in"
+endmenu

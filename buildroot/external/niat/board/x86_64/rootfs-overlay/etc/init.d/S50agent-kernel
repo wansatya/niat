@@ -1,0 +1,37 @@
+#!/bin/sh
+# S50agent-kernel — NIAT Agent Kernel daemon supervisor
+
+DAEMON=/usr/bin/agent-kernel
+PIDFILE=/var/run/niat/agent.pid
+
+case "$1" in
+    start)
+        echo "Starting NIAT Agent Kernel..."
+        mkdir -p /var/run/niat /var/log/niat /var/lib/niat
+        if [ -x "$DAEMON" ]; then
+            $DAEMON > /var/log/niat/agent.log 2>&1 &
+            echo $! > "$PIDFILE"
+            echo "Agent Kernel started."
+        else
+            echo "Agent Kernel binary not found at $DAEMON"
+        fi
+        ;;
+    stop)
+        echo "Stopping NIAT Agent Kernel..."
+        if [ -f "$PIDFILE" ]; then
+            kill $(cat "$PIDFILE") 2>/dev/null || true
+            rm -f "$PIDFILE"
+        fi
+        killall agent-kernel 2>/dev/null || true
+        ;;
+    restart)
+        "$0" stop
+        sleep 1
+        "$0" start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+exit 0

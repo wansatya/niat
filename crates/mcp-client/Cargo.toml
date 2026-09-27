@@ -1,0 +1,12 @@
+[package]
+name = "mcp-client"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+niat-common = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
