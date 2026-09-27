@@ -32,8 +32,8 @@ async fn main() -> Result<()> {
 
     info!("NIAT Agent Kernel v{} starting", niat_common::types::NIAT_VERSION);
 
-    // Load configuration
-    let config = NiatConfig::load(NiatConfig::default_path())?;
+    // Load configuration (user config first, system/state/legacy fallbacks)
+    let (config, _) = NiatConfig::load_persistent();
     info!(hostname = %config.system.hostname, "Configuration loaded");
 
     // Initialize system manager

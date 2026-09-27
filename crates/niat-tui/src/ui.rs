@@ -1,4 +1,4 @@
-//! TUI rendering — modern opencode-style minimal aesthetic.
+//! TUI rendering — lean transcript UI in warm espresso tones.
 
 use crate::app::{App, ConfigField, InputMode, MessageSender, PendingConfirmation};
 use niat_common::types::{SafetyLevel, NIAT_VERSION};
@@ -10,17 +10,24 @@ use ratatui::{
     Frame,
 };
 
-const FG: Color = Color::Rgb(226, 232, 240);
-const DIM: Color = Color::Rgb(100, 116, 139);
-const FAINT: Color = Color::Rgb(71, 85, 105);
-const ACCENT: Color = Color::Rgb(165, 180, 252);
-const ACCENT_DIM: Color = Color::Rgb(129, 140, 248);
-const GREEN: Color = Color::Rgb(134, 239, 172);
-const YELLOW: Color = Color::Rgb(253, 224, 71);
-const RED: Color = Color::Rgb(252, 165, 165);
-const PURPLE: Color = Color::Rgb(216, 180, 254);
-const BORDER: Color = Color::Rgb(51, 65, 85);
-const BORDER_FOCUS: Color = Color::Rgb(100, 116, 139);
+const APP_BG: Color = Color::Rgb(23, 17, 12);
+const PANEL_BG: Color = Color::Rgb(38, 28, 20);
+const FIELD_BG: Color = Color::Rgb(25, 18, 13);
+const CHIP_BG: Color = Color::Rgb(58, 44, 32);
+const INK: Color = Color::Rgb(26, 19, 13);
+const CLAY_RED: Color = Color::Rgb(140, 74, 54);
+const FG: Color = Color::Rgb(235, 219, 196);
+const DIM: Color = Color::Rgb(168, 142, 112);
+const FAINT: Color = Color::Rgb(108, 86, 64);
+const ACCENT: Color = Color::Rgb(222, 164, 100);
+const ACCENT_DIM: Color = Color::Rgb(176, 124, 70);
+const GREEN: Color = Color::Rgb(154, 178, 128);
+const YELLOW: Color = Color::Rgb(232, 185, 100);
+const RED: Color = Color::Rgb(210, 120, 95);
+const ROSE: Color = Color::Rgb(201, 144, 133);
+const BORDER: Color = Color::Rgb(74, 58, 42);
+const BORDER_FOCUS: Color = Color::Rgb(150, 110, 70);
+const RULE: Color = Color::Rgb(50, 38, 27);
 
 fn dim() -> Style {
     Style::default().fg(DIM)
@@ -40,6 +47,9 @@ pub fn draw(f: &mut Frame, app: &App) {
             Constraint::Length(1),
         ])
         .split(f.area());
+
+    // Warm espresso backdrop so the whole frame shares one tone.
+    f.render_widget(Block::default().style(Style::default().bg(APP_BG)), f.area());
 
     draw_header(f, app, chunks[0]);
     draw_messages(f, app, chunks[1]);
@@ -89,13 +99,12 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
-    // Lean transcript: no side borders or boxes, only faint row dividers.
-    let divider = "─".repeat(area.width as usize);
+    // Lean transcript: no borders or boxes, turns separated by whitespace.
     let mut lines: Vec<Line> = Vec::new();
 
     for (i, msg) in app.messages.iter().enumerate() {
         if i > 0 {
-            lines.push(Line::from(Span::styled(divider.as_str(), faint())));
+            lines.push(Line::from(""));
         }
 
         let mut content_lines: Vec<&str> = msg.content.lines().collect();
@@ -106,7 +115,7 @@ fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
         match &msg.sender {
             MessageSender::User => {
                 for (j, content_line) in content_lines.iter().enumerate() {
-                    let prefix = if j == 0 { "❯ " } else { "  " };
+                    let prefix = if j == 0 { "> " } else { "  " };
                     lines.push(Line::from(vec![
                         Span::styled(
                             prefix,
@@ -152,10 +161,10 @@ fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
             }
             MessageSender::Tool(name) => {
                 lines.push(Line::from(vec![
-                    Span::styled("⚙ ", Style::default().fg(PURPLE)),
+                    Span::styled("⚙ ", Style::default().fg(ROSE)),
                     Span::styled(
                         name.as_str(),
-                        Style::default().fg(PURPLE).add_modifier(Modifier::BOLD),
+                        Style::default().fg(ROSE).add_modifier(Modifier::BOLD),
                     ),
                 ]));
                 for content_line in &content_lines {
@@ -179,12 +188,12 @@ fn draw_permission_line(f: &mut Frame, app: &App, area: Rect) {
     let line = if let Some(confirm) = &app.pending_confirm {
         Line::from(vec![
             Span::styled(
-                " ⚠ approval needed: ",
+                " ! approval needed: ",
                 Style::default().fg(YELLOW).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 confirm.tool_name.clone(),
-                Style::default().fg(PURPLE).add_modifier(Modifier::BOLD),
+                Style::default().fg(ROSE).add_modifier(Modifier::BOLD),
             ),
             Span::styled(format!(" — {} ", confirm.description), dim()),
             Span::styled("[Y] approve", Style::default().fg(GREEN)),
@@ -212,15 +221,15 @@ fn draw_permission_line(f: &mut Frame, app: &App, area: Rect) {
 fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
     // Lean composer: a top row-border only, no side borders or boxes.
     let (rule_color, placeholder) = match app.input_mode {
-        InputMode::Normal => (BORDER, "Press Enter to type..."),
+        InputMode::Normal => (RULE, "Press Enter to type..."),
         InputMode::Editing => (BORDER_FOCUS, "State your intent or type :help..."),
-        InputMode::ConfigModal => (BORDER, "Configuration in progress..."),
+        InputMode::ConfigModal => (RULE, "Configuration in progress..."),
     };
 
     let content = if app.input.is_empty() {
         Line::from(vec![
             Span::styled(
-                "❯ ",
+                "> ",
                 Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
             ),
             Span::styled(placeholder, dim()),
@@ -228,7 +237,7 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
     } else {
         Line::from(vec![
             Span::styled(
-                "❯ ",
+                "> ",
                 Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
             ),
             Span::styled(app.input.as_str(), Style::default().fg(FG)),
@@ -247,67 +256,45 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
     }
 
     // Cursor at the end of the input, on the line below the top rule.
-    // The visible prefix is "❯ " (2 cells).
+    // The visible prefix is "> " (2 cells).
     let input_width: u16 = app.input.chars().count().min(u16::MAX as usize) as u16;
     let x = (area.x + 2 + input_width).min(area.x + area.width.saturating_sub(1));
     Some(Position::new(x, area.y + 1))
 }
 
 fn draw_footer(f: &mut Frame, _app: &App, area: Rect) {
+    // Lean key hints: subtle chips, lowercase labels, dot separators.
+    let chip = |t: &'static str| {
+        Span::styled(
+            t,
+            Style::default().fg(FG).bg(CHIP_BG).add_modifier(Modifier::BOLD),
+        )
+    };
+    let label = |t: &'static str| Span::styled(t, dim());
+    let sep = Span::styled(" · ", faint());
     let shortcuts = Line::from(vec![
-        Span::styled(
-            " Enter ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Send   ", Style::default().fg(Color::White)),
-        Span::styled(
-            " F3 ",
-            Style::default()
-                .fg(Color::White)
-                .bg(Color::Rgb(147, 51, 234))
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Config   ", Style::default().fg(Color::White)),
-        Span::styled(
-            " F2 ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Shell   ", Style::default().fg(Color::White)),
-        Span::styled(
-            " :reboot ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightYellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Reboot   ", Style::default().fg(Color::White)),
-        Span::styled(
-            " Ctrl+C / :quit ",
-            Style::default()
-                .fg(Color::White)
-                .bg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Force Reboot   ", Style::default().fg(Color::White)),
-        Span::styled(
-            " :help ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::LightGreen)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Help ", Style::default().fg(Color::White)),
+        chip(" Enter "),
+        label(" send "),
+        sep.clone(),
+        chip(" F3 "),
+        label(" config "),
+        sep.clone(),
+        chip(" F2 "),
+        label(" shell "),
+        sep.clone(),
+        chip(" :reboot "),
+        label(" reboot "),
+        sep.clone(),
+        chip(" Ctrl+C "),
+        label(" force reboot "),
+        sep,
+        chip(" :help "),
+        label(" help "),
     ]);
 
     let footer = Paragraph::new(shortcuts)
         .alignment(Alignment::Center)
-        .style(Style::default().bg(Color::Rgb(15, 20, 32)));
+        .style(Style::default().bg(APP_BG));
     f.render_widget(footer, area);
 }
 
@@ -341,21 +328,21 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Frame box
     let frame_block = Block::default()
         .title(Span::styled(
-            " ⚙ NIAT Model & API Configuration ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            " Model & API configuration ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ))
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-        .style(Style::default().bg(Color::Rgb(20, 27, 45)));
+        .border_style(Style::default().fg(ACCENT))
+        .style(Style::default().bg(PANEL_BG));
     f.render_widget(frame_block, modal_area);
 
     // Description
     let desc = Paragraph::new(Line::from(vec![
         Span::styled(
-            " Configure OpenAI-compatible LLM endpoint, model name, and API key:",
-            Style::default().fg(Color::Rgb(200, 220, 255)),
+            " Configure the OpenAI-compatible endpoint, model, and API key:",
+            dim(),
         ),
     ]));
     f.render_widget(desc, chunks[0]);
@@ -363,22 +350,22 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Field 1: Base URL
     let url_active = modal.active_field == ConfigField::BaseUrl;
     let url_block = Block::default()
-        .title(if url_active { " ▶ API Base URL " } else { " API Base URL " })
+        .title(if url_active { " ▶ API base URL " } else { " API base URL " })
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(if url_active { Color::LightGreen } else { Color::Rgb(71, 85, 105) }))
-        .style(Style::default().bg(Color::Rgb(12, 16, 26)));
+        .border_style(Style::default().fg(if url_active { YELLOW } else { BORDER }))
+        .style(Style::default().bg(FIELD_BG));
     let url_text = if modal.base_url.is_empty() && url_active {
         Line::from(vec![
             Span::raw(" "),
-            Span::styled("https://api.openai.com/v1", Style::default().fg(Color::DarkGray)),
-            Span::styled("█", Style::default().fg(Color::LightGreen)),
+            Span::styled("https://api.openai.com/v1", faint()),
+            Span::styled("█", Style::default().fg(YELLOW)),
         ])
     } else {
         Line::from(vec![
             Span::raw(" "),
-            Span::styled(&modal.base_url, Style::default().fg(Color::White)),
-            if url_active { Span::styled("█", Style::default().fg(Color::LightGreen)) } else { Span::raw("") },
+            Span::styled(&modal.base_url, Style::default().fg(FG)),
+            if url_active { Span::styled("█", Style::default().fg(YELLOW)) } else { Span::raw("") },
         ])
     };
     f.render_widget(Paragraph::new(url_text).block(url_block), chunks[1]);
@@ -386,22 +373,22 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Field 2: Model Name
     let model_active = modal.active_field == ConfigField::Model;
     let model_block = Block::default()
-        .title(if model_active { " ▶ Model Name " } else { " Model Name " })
+        .title(if model_active { " ▶ Model name " } else { " Model name " })
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(if model_active { Color::LightGreen } else { Color::Rgb(71, 85, 105) }))
-        .style(Style::default().bg(Color::Rgb(12, 16, 26)));
+        .border_style(Style::default().fg(if model_active { YELLOW } else { BORDER }))
+        .style(Style::default().bg(FIELD_BG));
     let model_text = if modal.model.is_empty() && model_active {
         Line::from(vec![
             Span::raw(" "),
-            Span::styled("gpt-4o", Style::default().fg(Color::DarkGray)),
-            Span::styled("█", Style::default().fg(Color::LightGreen)),
+            Span::styled("gpt-4o", faint()),
+            Span::styled("█", Style::default().fg(YELLOW)),
         ])
     } else {
         Line::from(vec![
             Span::raw(" "),
-            Span::styled(&modal.model, Style::default().fg(Color::White)),
-            if model_active { Span::styled("█", Style::default().fg(Color::LightGreen)) } else { Span::raw("") },
+            Span::styled(&modal.model, Style::default().fg(FG)),
+            if model_active { Span::styled("█", Style::default().fg(YELLOW)) } else { Span::raw("") },
         ])
     };
     f.render_widget(Paragraph::new(model_text).block(model_block), chunks[2]);
@@ -409,11 +396,11 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Field 3: API Key
     let key_active = modal.active_field == ConfigField::ApiKey;
     let key_block = Block::default()
-        .title(if key_active { " ▶ API Key (sk-...) [Ctrl+T to toggle visibility] " } else { " API Key (sk-...) " })
+        .title(if key_active { " ▶ API key · Ctrl+T reveals " } else { " API key " })
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(if key_active { Color::LightGreen } else { Color::Rgb(71, 85, 105) }))
-        .style(Style::default().bg(Color::Rgb(12, 16, 26)));
+        .border_style(Style::default().fg(if key_active { YELLOW } else { BORDER }))
+        .style(Style::default().bg(FIELD_BG));
 
     let masked_key = if modal.show_api_key {
         modal.api_key.clone()
@@ -422,18 +409,19 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     } else {
         "•".repeat(modal.api_key.len().min(40))
     };
+    let key_fg = if modal.show_api_key || modal.api_key.is_empty() { FG } else { YELLOW };
 
     let key_text = if modal.api_key.is_empty() && key_active {
         Line::from(vec![
             Span::raw(" "),
-            Span::styled("sk-...", Style::default().fg(Color::DarkGray)),
-            Span::styled("█", Style::default().fg(Color::LightGreen)),
+            Span::styled("sk-...", faint()),
+            Span::styled("█", Style::default().fg(YELLOW)),
         ])
     } else {
         Line::from(vec![
             Span::raw(" "),
-            Span::styled(masked_key, Style::default().fg(Color::LightYellow)),
-            if key_active { Span::styled("█", Style::default().fg(Color::LightGreen)) } else { Span::raw("") },
+            Span::styled(masked_key, Style::default().fg(key_fg)),
+            if key_active { Span::styled("█", Style::default().fg(YELLOW)) } else { Span::raw("") },
         ])
     };
     f.render_widget(Paragraph::new(key_text).block(key_block), chunks[3]);
@@ -445,18 +433,18 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     let buttons_line = Line::from(vec![
         Span::raw("    "),
         Span::styled(
-            if save_active { " ▶ [ Save & Apply (Enter) ] ◀ " } else { "   [ Save & Apply ]   " },
+            if save_active { "[ Save & apply (Enter) ]" } else { "[ Save & apply ]" },
             Style::default()
-                .fg(if save_active { Color::Black } else { Color::White })
-                .bg(if save_active { Color::LightGreen } else { Color::Rgb(22, 101, 52) })
+                .fg(if save_active { INK } else { FG })
+                .bg(if save_active { ACCENT } else { CHIP_BG })
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("        "),
         Span::styled(
-            if cancel_active { " ▶ [ Cancel (Esc) ] ◀ " } else { "   [ Cancel ]   " },
+            if cancel_active { "[ Cancel (Esc) ]" } else { "[ Cancel ]" },
             Style::default()
-                .fg(if cancel_active { Color::Black } else { Color::White })
-                .bg(if cancel_active { Color::LightRed } else { Color::Rgb(153, 27, 27) })
+                .fg(if cancel_active { FG } else { DIM })
+                .bg(if cancel_active { CLAY_RED } else { CHIP_BG })
                 .add_modifier(Modifier::BOLD),
         ),
     ]);
@@ -465,8 +453,8 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Modal Helper Hint
     let hint = Paragraph::new(Line::from(vec![
         Span::styled(
-            "[Tab / ↑↓] Switch Field │ [Enter] Save & Apply │ [Esc] Close",
-            Style::default().fg(Color::Rgb(148, 163, 184)),
+            "[Tab / ↑↓] switch field · [Enter] save & apply · [Esc] close",
+            dim(),
         ),
     ])).alignment(Alignment::Center);
     f.render_widget(hint, chunks[5]);
@@ -487,15 +475,15 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
     f.render_widget(Clear, modal_area);
 
     let safety_style = match confirm.safety_level {
-        SafetyLevel::Safe => Style::default().fg(Color::Black).bg(Color::LightGreen).add_modifier(Modifier::BOLD),
-        SafetyLevel::Confirm => Style::default().fg(Color::Black).bg(Color::LightYellow).add_modifier(Modifier::BOLD),
-        SafetyLevel::Dangerous => Style::default().fg(Color::White).bg(Color::Red).add_modifier(Modifier::BOLD),
+        SafetyLevel::Safe => Style::default().fg(INK).bg(GREEN).add_modifier(Modifier::BOLD),
+        SafetyLevel::Confirm => Style::default().fg(INK).bg(YELLOW).add_modifier(Modifier::BOLD),
+        SafetyLevel::Dangerous => Style::default().fg(FG).bg(CLAY_RED).add_modifier(Modifier::BOLD),
     };
 
     let safety_label = match confirm.safety_level {
-        SafetyLevel::Safe => " ✔ SAFE OPERATION ",
-        SafetyLevel::Confirm => " ⚠ REQUIRES CONFIRMATION ",
-        SafetyLevel::Dangerous => " ⛔ DANGEROUS OPERATION ",
+        SafetyLevel::Safe => " ✓ safe operation ",
+        SafetyLevel::Confirm => " ! needs confirmation ",
+        SafetyLevel::Dangerous => " !! dangerous operation ",
     };
 
     let params_str = serde_json::to_string(&confirm.params).unwrap_or_default();
@@ -503,27 +491,27 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
     let lines = vec![
         Line::from(""),
         Line::from(vec![
-            Span::raw("  Status: "),
+            Span::styled("  status: ", dim()),
             Span::styled(safety_label, safety_style),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::raw("  Target Tool: "),
-            Span::styled(&confirm.tool_name, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("  tool: ", dim()),
+            Span::styled(&confirm.tool_name, Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
-            Span::raw("  Intent:      "),
-            Span::styled(&confirm.description, Style::default().fg(Color::White)),
+            Span::styled("  intent: ", dim()),
+            Span::styled(&confirm.description, Style::default().fg(FG)),
         ]),
         Line::from(vec![
-            Span::raw("  Parameters:  "),
-            Span::styled(params_str, Style::default().fg(Color::LightCyan)),
+            Span::styled("  params: ", dim()),
+            Span::styled(params_str, dim()),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("      [Y] Approve & Execute      ", Style::default().fg(Color::Black).bg(Color::LightGreen).add_modifier(Modifier::BOLD)),
+            Span::styled("   [Y] approve & run   ", Style::default().fg(INK).bg(GREEN).add_modifier(Modifier::BOLD)),
             Span::raw("    "),
-            Span::styled("      [N] Deny Action      ", Style::default().fg(Color::Black).bg(Color::LightRed).add_modifier(Modifier::BOLD)),
+            Span::styled("   [N] deny   ", Style::default().fg(FG).bg(CLAY_RED).add_modifier(Modifier::BOLD)),
         ]),
     ];
 
@@ -531,14 +519,14 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
         .block(
             Block::default()
                 .title(Span::styled(
-                    " ⚠ ACTION CONFIRMATION REQUIRED ",
-                    Style::default().fg(Color::LightYellow).add_modifier(Modifier::BOLD),
+                    " ! confirmation required ",
+                    Style::default().fg(YELLOW).add_modifier(Modifier::BOLD),
                 ))
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::LightYellow))
-                .style(Style::default().bg(Color::Rgb(30, 24, 28))),
+                .border_style(Style::default().fg(YELLOW))
+                .style(Style::default().bg(PANEL_BG)),
         )
         .wrap(Wrap { trim: true });
 
@@ -568,11 +556,17 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| draw(f, &app)).unwrap();
         let text = buffer_text(&terminal);
-        // Lean transcript: welcome lines plus row dividers, no boxed chrome.
+        // Lean transcript: welcome lines, no boxed chrome, no message dividers.
         assert!(text.contains("Welcome! Type your intent"));
-        assert!(text.contains("────"));
+        // The only horizontal rule in the frame is the input's top border.
+        assert_eq!(text.matches('─').count(), 100);
         assert!(text.contains("standalone"));
-        for heavy in ["◈", "❯ YOU", "◆ NIAT AGENT", "│", "▎", "╭", "╰"] {
+        // Warm espresso backdrop fills the frame; lean footer hints are present.
+        assert_eq!(terminal.backend().buffer()[(0, 0)].bg, APP_BG);
+        for hint in ["send", "shell", "force reboot"] {
+            assert!(text.contains(hint), "footer must hint at {hint:?}");
+        }
+        for heavy in ["◈", "❯ YOU", "◆ NIAT AGENT", "│", "▎", "╭", "╰", "⚠", "⛔", "✔", "◀"] {
             assert!(!text.contains(heavy), "lean frame must not contain {heavy:?}");
         }
     }
@@ -598,7 +592,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| draw(f, &app)).unwrap();
         let text = buffer_text(&terminal);
-        assert!(text.contains("❯ hello niat"));
+        assert!(text.contains("> hello niat"));
         assert!(text.contains("working on it"));
         assert!(text.contains("disk.check"));
         assert!(text.contains("✗"));

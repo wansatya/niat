@@ -3,6 +3,7 @@
 use crate::agent_client::AgentClient;
 use niat_common::config::NiatConfig;
 use niat_common::types::{SafetyLevel, SystemStatus, NIAT_VERSION};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
@@ -59,6 +60,7 @@ pub struct App {
     pub messages: Vec<Message>,
     pub status: Option<SystemStatus>,
     pub config: NiatConfig,
+    pub config_source: Option<PathBuf>,
     pub config_modal: Option<ConfigModalState>,
     pub pending_confirm: Option<PendingConfirmation>,
     pub agent_client: Option<AgentClient>,
@@ -70,9 +72,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let config = NiatConfig::load(NiatConfig::default_path())
-            .or_else(|_| NiatConfig::load(std::path::Path::new("/tmp/niat_config.toml")))
-            .unwrap_or_default();
+        let (config, config_source) = NiatConfig::load_persistent();
 
         let mut app = Self {
             input: String::new(),
@@ -80,6 +80,7 @@ impl App {
             messages: Vec::new(),
             status: None,
             config,
+            config_source,
             config_modal: None,
             pending_confirm: None,
             agent_client: None,
@@ -151,6 +152,16 @@ impl App {
         self.input_mode = InputMode::Editing;
     }
 
+    /// Persist the current config: save back to the file it was loaded from
+    /// when possible, otherwise to the first writable persistent location
+    /// (`~/.niat/config.toml` first). Remembers the path written so later
+    /// saves keep going to the same file.
+    pub fn persist_config(&mut self) -> anyhow::Result<PathBuf> {
+        let path = self.config.save_persistent(self.config_source.as_deref())?;
+        self.config_source = Some(path.clone());
+        Ok(path)
+    }
+
     pub async fn save_config_modal(&mut self) {
         if let Some(modal) = self.config_modal.take() {
             let base_url = modal.base_url.trim().to_string();
@@ -173,9 +184,21 @@ impl App {
                 Some(key.clone())
             };
 
-            // Save to disk
-            let _ = self.config.save(NiatConfig::default_path());
-            let _ = self.config.save(std::path::Path::new("/tmp/niat_config.toml"));
+            // Save to disk (persistent across restarts); report failures loudly.
+            let save_note = match self.persist_config() {
+                Ok(path) => format!("Saved to {}.", path.display()),
+                Err(e) => {
+                    self.messages.push(Message {
+                        sender: MessageSender::Error,
+                        content: format!(
+                            "Could not save configuration to disk: {}. Settings apply until restart.",
+                            e
+                        ),
+                        timestamp: now(),
+                    });
+                    "Disk save failed.".to_string()
+                }
+            };
 
             // Sync with agent kernel
             if let Some(client) = &mut self.agent_client {
@@ -189,10 +212,11 @@ impl App {
             self.messages.push(Message {
                 sender: MessageSender::Success,
                 content: format!(
-                    "Configuration updated: Model = '{}', API URL = '{}', API Key = {}",
+                    "Configuration updated: Model = '{}', API URL = '{}', API Key = {}. {}",
                     self.config.model.model,
                     self.config.model.base_url,
-                    if self.config.model.api_key.is_some() { "[Set]" } else { "[None]" }
+                    if self.config.model.api_key.is_some() { "[Set]" } else { "[None]" },
+                    save_note
                 ),
                 timestamp: now(),
             });
@@ -308,42 +332,48 @@ impl App {
                         "url" | "base_url" => {
                             let url = parts[3..].join(" ");
                             self.config.model.base_url = url.clone();
-                            let _ = self.config.save(NiatConfig::default_path());
-                            let _ = self.config.save(std::path::Path::new("/tmp/niat_config.toml"));
+                            let save_note = match self.persist_config() {
+                                Ok(path) => format!("Saved to {}.", path.display()),
+                                Err(e) => format!("Disk save failed: {}.", e),
+                            };
                             if let Some(client) = &mut self.agent_client {
                                 let _ = client.send_update_config(Some(url.clone()), None, None).await;
                             }
                             self.messages.push(Message {
                                 sender: MessageSender::Success,
-                                content: format!("API Base URL set to: {}", url),
+                                content: format!("API Base URL set to: {}. {}", url, save_note),
                                 timestamp: now(),
                             });
                         }
                         "model" => {
                             let model_name = parts[3..].join(" ");
                             self.config.model.model = model_name.clone();
-                            let _ = self.config.save(NiatConfig::default_path());
-                            let _ = self.config.save(std::path::Path::new("/tmp/niat_config.toml"));
+                            let save_note = match self.persist_config() {
+                                Ok(path) => format!("Saved to {}.", path.display()),
+                                Err(e) => format!("Disk save failed: {}.", e),
+                            };
                             if let Some(client) = &mut self.agent_client {
                                 let _ = client.send_update_config(None, Some(model_name.clone()), None).await;
                             }
                             self.messages.push(Message {
                                 sender: MessageSender::Success,
-                                content: format!("Model name set to: {}", model_name),
+                                content: format!("Model name set to: {}. {}", model_name, save_note),
                                 timestamp: now(),
                             });
                         }
                         "key" | "api_key" => {
                             let key = parts[3..].join(" ");
                             self.config.model.api_key = Some(key.clone());
-                            let _ = self.config.save(NiatConfig::default_path());
-                            let _ = self.config.save(std::path::Path::new("/tmp/niat_config.toml"));
+                            let save_note = match self.persist_config() {
+                                Ok(path) => format!("Saved to {}.", path.display()),
+                                Err(e) => format!("Disk save failed: {}.", e),
+                            };
                             if let Some(client) = &mut self.agent_client {
                                 let _ = client.send_update_config(None, None, Some(key)).await;
                             }
                             self.messages.push(Message {
                                 sender: MessageSender::Success,
-                                content: "API key updated successfully.".into(),
+                                content: format!("API key updated successfully. {}", save_note),
                                 timestamp: now(),
                             });
                         }
@@ -561,5 +591,25 @@ mod tests {
         app.config_modal.as_mut().unwrap().active_field = ConfigField::SaveButton;
         app.paste_text("hello");
         assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn persist_config_saves_back_to_loaded_path() {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("niat-app-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+
+        let mut app = App::new();
+        app.config.model.model = "persisted-model".into();
+        // A scratch preferred path wins first, so no real location is touched.
+        app.config_source = Some(path.clone());
+        let saved = app.persist_config().unwrap();
+        assert_eq!(saved, path);
+        assert_eq!(app.config_source.as_ref(), Some(&path));
+        let reloaded = NiatConfig::load(&path).unwrap();
+        assert_eq!(reloaded.model.model, "persisted-model");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

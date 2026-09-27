@@ -78,9 +78,10 @@ impl Planner {
                     }
                 }
 
-                // Save to default path if writable
-                let _ = state.config.save(NiatConfig::default_path());
-                let _ = state.config.save(std::path::Path::new("/tmp/niat_config.toml"));
+                // Persist to the first writable location; never fail the update.
+                if let Err(e) = state.config.save_persistent(None) {
+                    tracing::warn!("Failed to persist updated config: {}", e);
+                }
 
                 // Reinitialize model client
                 state.model = ModelClient::new(&state.config.model);
