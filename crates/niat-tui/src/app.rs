@@ -31,6 +31,8 @@ pub struct ConfigModalState {
 pub struct Message {
     pub sender: MessageSender,
     pub content: String,
+    // Kept for future transcript export; the lean UI shows no timestamps.
+    #[allow(dead_code)]
     pub timestamp: String,
 }
 
@@ -99,7 +101,7 @@ impl App {
         });
         app.messages.push(Message {
             sender: MessageSender::System,
-            content: "Quick commands: :config (Model & API settings) │ :reboot (Restart) │ :quit (Reboot) │ F2 (Shell)".into(),
+            content: "Quick commands: :config (Model & API settings) · :reboot (Restart) · :quit (Reboot) · F2 (Shell)".into(),
             timestamp: now(),
         });
 
@@ -253,6 +255,41 @@ impl App {
         }
 
         self.input_mode = InputMode::Editing;
+    }
+
+    /// Insert bracketed-paste text (e.g. from terminal Ctrl+Shift+V) into the
+    /// active editable field. Newlines/tabs become spaces and other control
+    /// characters are dropped so a multi-line paste stays on one line.
+    pub fn paste_text(&mut self, text: &str) {
+        let cleaned: String = text
+            .chars()
+            .filter_map(|c| {
+                if c == '\n' || c == '\r' || c == '\t' {
+                    Some(' ')
+                } else if c.is_control() {
+                    None
+                } else {
+                    Some(c)
+                }
+            })
+            .collect();
+        if cleaned.is_empty() {
+            return;
+        }
+        match self.input_mode {
+            InputMode::Editing => self.input.push_str(&cleaned),
+            InputMode::ConfigModal => {
+                if let Some(modal) = &mut self.config_modal {
+                    match modal.active_field {
+                        ConfigField::BaseUrl => modal.base_url.push_str(&cleaned),
+                        ConfigField::Model => modal.model.push_str(&cleaned),
+                        ConfigField::ApiKey => modal.api_key.push_str(&cleaned),
+                        ConfigField::SaveButton | ConfigField::CancelButton => {}
+                    }
+                }
+            }
+            InputMode::Normal => {}
+        }
     }
 
     async fn handle_command(&mut self, cmd: &str) {
@@ -478,4 +515,51 @@ impl App {
 
 fn now() -> String {
     chrono::Local::now().format("%H:%M:%S").to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paste_appends_to_editing_input() {
+        let mut app = App::new();
+        app.input_mode = InputMode::Editing;
+        app.input = "check ".into();
+        app.paste_text("disk usage");
+        assert_eq!(app.input, "check disk usage");
+    }
+
+    #[test]
+    fn paste_sanitizes_newlines_and_control_chars() {
+        let mut app = App::new();
+        app.input_mode = InputMode::Editing;
+        app.paste_text("line1\r\nline2\tline3\x1b[0m");
+        assert_eq!(app.input, "line1  line2 line3[0m");
+    }
+
+    #[test]
+    fn paste_targets_active_config_field() {
+        let mut app = App::new();
+        app.open_config_modal();
+        let modal = app.config_modal.as_mut().unwrap();
+        modal.active_field = ConfigField::ApiKey;
+        modal.api_key.clear();
+        app.paste_text("sk-test-key");
+        assert_eq!(app.config_modal.as_ref().unwrap().api_key, "sk-test-key");
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn paste_ignored_in_normal_mode_and_on_buttons() {
+        let mut app = App::new();
+        app.input_mode = InputMode::Normal;
+        app.paste_text("hello");
+        assert!(app.input.is_empty());
+
+        app.open_config_modal();
+        app.config_modal.as_mut().unwrap().active_field = ConfigField::SaveButton;
+        app.paste_text("hello");
+        assert!(app.input.is_empty());
+    }
 }

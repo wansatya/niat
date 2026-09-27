@@ -3,7 +3,7 @@
 use crate::app::{App, ConfigField, InputMode, MessageSender, PendingConfirmation};
 use niat_common::types::{SafetyLevel, NIAT_VERSION};
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
@@ -36,7 +36,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             Constraint::Length(1),
             Constraint::Min(6),
             Constraint::Length(1),
-            Constraint::Length(5),
+            Constraint::Length(3),
             Constraint::Length(1),
         ])
         .split(f.area());
@@ -89,176 +89,168 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
+    // Lean transcript: no side borders or boxes, only faint row dividers.
+    let divider = "─".repeat(area.width as usize);
     let mut lines: Vec<Line> = Vec::new();
 
-    for msg in &app.messages {
-        let (tag_text, tag_fg, tag_bg, bar_color, text_color) = match &msg.sender {
-            MessageSender::User => (
-                " ❯ YOU ",
-                Color::Black,
-                Color::LightGreen,
-                Color::LightGreen,
-                Color::White,
-            ),
-            MessageSender::Agent => (
-                " ◆ NIAT AGENT ",
-                Color::Black,
-                Color::Cyan,
-                Color::Cyan,
-                Color::Rgb(224, 242, 254),
-            ),
-            MessageSender::System => (
-                " ℹ SYSTEM ",
-                Color::Black,
-                Color::LightYellow,
-                Color::LightYellow,
-                Color::Rgb(254, 243, 199),
-            ),
-            MessageSender::Success => (
-                " ✔ SUCCESS ",
-                Color::Black,
-                Color::LightGreen,
-                Color::LightGreen,
-                Color::Rgb(220, 252, 231),
-            ),
-            MessageSender::Error => (
-                " ✖ ERROR ",
-                Color::White,
-                Color::LightRed,
-                Color::LightRed,
-                Color::Rgb(254, 202, 202),
-            ),
-            MessageSender::Tool(name) => (
-                name.as_str(),
-                Color::White,
-                Color::Rgb(147, 51, 234),
-                Color::LightMagenta,
-                Color::Rgb(243, 232, 255),
-            ),
-        };
-
-        let time_span = Span::styled(
-            format!(" [{}] ", msg.timestamp),
-            Style::default().fg(Color::DarkGray),
-        );
-
-        let tag_span = match &msg.sender {
-            MessageSender::Tool(_) => Span::styled(
-                format!(" ⚙ Tool [{}] ", tag_text),
-                Style::default()
-                    .fg(tag_fg)
-                    .bg(tag_bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            _ => Span::styled(
-                tag_text,
-                Style::default()
-                    .fg(tag_fg)
-                    .bg(tag_bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        };
-
-        lines.push(Line::from(vec![Span::raw(" "), tag_span, time_span]));
-
-        for content_line in msg.content.lines() {
-            lines.push(Line::from(vec![
-                Span::styled("   ▎ ", Style::default().fg(bar_color)),
-                Span::styled(content_line, Style::default().fg(text_color)),
-            ]));
+    for (i, msg) in app.messages.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::from(Span::styled(divider.as_str(), faint())));
         }
-        lines.push(Line::from(""));
+
+        let mut content_lines: Vec<&str> = msg.content.lines().collect();
+        if content_lines.is_empty() {
+            content_lines.push("");
+        }
+
+        match &msg.sender {
+            MessageSender::User => {
+                for (j, content_line) in content_lines.iter().enumerate() {
+                    let prefix = if j == 0 { "❯ " } else { "  " };
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            prefix,
+                            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(*content_line, Style::default().fg(FG)),
+                    ]));
+                }
+            }
+            MessageSender::Agent => {
+                for content_line in &content_lines {
+                    lines.push(Line::from(Span::styled(
+                        *content_line,
+                        Style::default().fg(FG),
+                    )));
+                }
+            }
+            MessageSender::System => {
+                for content_line in &content_lines {
+                    lines.push(Line::from(vec![
+                        Span::styled("· ", faint()),
+                        Span::styled(*content_line, dim()),
+                    ]));
+                }
+            }
+            MessageSender::Success => {
+                for (j, content_line) in content_lines.iter().enumerate() {
+                    let prefix = if j == 0 { "✓ " } else { "  " };
+                    lines.push(Line::from(vec![
+                        Span::styled(prefix, Style::default().fg(GREEN)),
+                        Span::styled(*content_line, Style::default().fg(FG)),
+                    ]));
+                }
+            }
+            MessageSender::Error => {
+                for (j, content_line) in content_lines.iter().enumerate() {
+                    let prefix = if j == 0 { "✗ " } else { "  " };
+                    lines.push(Line::from(vec![
+                        Span::styled(prefix, Style::default().fg(RED)),
+                        Span::styled(*content_line, Style::default().fg(FG)),
+                    ]));
+                }
+            }
+            MessageSender::Tool(name) => {
+                lines.push(Line::from(vec![
+                    Span::styled("⚙ ", Style::default().fg(PURPLE)),
+                    Span::styled(
+                        name.as_str(),
+                        Style::default().fg(PURPLE).add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                for content_line in &content_lines {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(*content_line, dim()),
+                    ]));
+                }
+            }
+        }
     }
 
     let messages = Paragraph::new(Text::from(lines))
-        .block(
-            Block::default()
-                .title(Span::styled(
-                    " ◈ NIAT Intent Workspace ◈ ",
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                ))
-                .title_alignment(Alignment::Center)
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(Color::Rgb(71, 85, 105)))
-                .style(Style::default().bg(Color::Rgb(13, 17, 26))),
-        )
         .wrap(Wrap { trim: false })
         .scroll((app.scroll_offset, 0));
 
     f.render_widget(messages, area);
 }
 
-fn draw_input(f: &mut Frame, app: &App, area: Rect) {
-    let (border_color, border_title, bg_color) = match app.input_mode {
-        InputMode::Normal => (
-            Color::Rgb(100, 116, 139),
-            " ❯ Normal Mode [Press Enter to Type] ",
-            Color::Rgb(18, 24, 38),
-        ),
-        InputMode::Editing => (
-            Color::Cyan,
-            " ❯ What would you like to accomplish? ",
-            Color::Rgb(20, 28, 46),
-        ),
-        InputMode::ConfigModal => (
-            Color::DarkGray,
-            " ❯ Configuration In Progress... ",
-            Color::Rgb(15, 20, 32),
-        ),
-    };
-
-    let prompt = Span::styled(
-        " ⚡ INTENT ",
-        Style::default()
-            .fg(Color::Black)
-            .bg(if matches!(app.input_mode, InputMode::Editing) {
-                Color::Cyan
-            } else {
-                Color::DarkGray
-            })
-            .add_modifier(Modifier::BOLD),
-    );
-
-    let content_line = if app.input.is_empty() && matches!(app.input_mode, InputMode::Editing) {
+fn draw_permission_line(f: &mut Frame, app: &App, area: Rect) {
+    let line = if let Some(confirm) = &app.pending_confirm {
         Line::from(vec![
-            Span::raw(" "),
-            prompt,
-            Span::raw(" "),
             Span::styled(
-                "State your intent (e.g. 'check disk', 'setup network') or type :config, :reboot, :help...",
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                " ⚠ approval needed: ",
+                Style::default().fg(YELLOW).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("█", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                confirm.tool_name.clone(),
+                Style::default().fg(PURPLE).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!(" — {} ", confirm.description), dim()),
+            Span::styled("[Y] approve", Style::default().fg(GREEN)),
+            Span::styled(" · ", faint()),
+            Span::styled("[N] deny", Style::default().fg(RED)),
+        ])
+    } else if !app.connected {
+        Line::from(vec![
+            Span::styled(" ○ standalone", faint()),
+            Span::styled(
+                " — agent offline, F2 for shell · :config to setup · :help for commands",
+                dim(),
+            ),
         ])
     } else {
         Line::from(vec![
-            Span::raw(" "),
-            prompt,
-            Span::raw(" "),
+            Span::styled(" ◆ ", Style::default().fg(ACCENT_DIM)),
+            Span::styled("intent mode", dim()),
+            Span::styled(" — type below · Enter to send · F3 config · F2 shell", faint()),
+        ])
+    };
+    f.render_widget(Paragraph::new(line), area);
+}
+
+fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
+    // Lean composer: a top row-border only, no side borders or boxes.
+    let (rule_color, placeholder) = match app.input_mode {
+        InputMode::Normal => (BORDER, "Press Enter to type..."),
+        InputMode::Editing => (BORDER_FOCUS, "State your intent or type :help..."),
+        InputMode::ConfigModal => (BORDER, "Configuration in progress..."),
+    };
+
+    let content = if app.input.is_empty() {
+        Line::from(vec![
             Span::styled(
-                &app.input,
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                "❯ ",
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("█", Style::default().fg(Color::Cyan)),
+            Span::styled(placeholder, dim()),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(
+                "❯ ",
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(app.input.as_str(), Style::default().fg(FG)),
         ])
     };
 
-    let input = Paragraph::new(content_line).block(
+    let input = Paragraph::new(content).block(
         Block::default()
-            .title(Span::styled(
-                border_title,
-                Style::default()
-                    .fg(border_color)
-                    .add_modifier(Modifier::BOLD),
-            ))
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(border_color))
-            .style(Style::default().bg(bg_color)),
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(rule_color)),
     );
-
     f.render_widget(input, area);
+
+    if !matches!(app.input_mode, InputMode::Editing) {
+        return None;
+    }
+
+    // Cursor at the end of the input, on the line below the top rule.
+    // The visible prefix is "❯ " (2 cells).
+    let input_width: u16 = app.input.chars().count().min(u16::MAX as usize) as u16;
+    let x = (area.x + 2 + input_width).min(area.x + area.width.saturating_sub(1));
+    Some(Position::new(x, area.y + 1))
 }
 
 fn draw_footer(f: &mut Frame, _app: &App, area: Rect) {
@@ -551,4 +543,109 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
         .wrap(Wrap { trim: true });
 
     f.render_widget(modal, modal_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::PendingConfirmation;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn draws_lean_workspace_without_box_borders() {
+        let app = App::new();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        let text = buffer_text(&terminal);
+        // Lean transcript: welcome lines plus row dividers, no boxed chrome.
+        assert!(text.contains("Welcome! Type your intent"));
+        assert!(text.contains("────"));
+        assert!(text.contains("standalone"));
+        for heavy in ["◈", "❯ YOU", "◆ NIAT AGENT", "│", "▎", "╭", "╰"] {
+            assert!(!text.contains(heavy), "lean frame must not contain {heavy:?}");
+        }
+    }
+
+    #[test]
+    fn lean_transcript_styles_each_sender() {
+        use crate::app::Message;
+        let mut app = App::new();
+        app.messages.clear();
+        for (sender, content) in [
+            (MessageSender::User, "hello niat"),
+            (MessageSender::Agent, "working on it"),
+            (MessageSender::Tool("disk.check".into()), "5 GB free"),
+            (MessageSender::Error, "boom"),
+        ] {
+            app.messages.push(Message {
+                sender,
+                content: content.into(),
+                timestamp: "00:00:00".into(),
+            });
+        }
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("❯ hello niat"));
+        assert!(text.contains("working on it"));
+        assert!(text.contains("disk.check"));
+        assert!(text.contains("✗"));
+        assert!(text.contains("boom"));
+        assert!(!text.contains("00:00:00"), "lean transcript shows no timestamps");
+    }
+
+    #[test]
+    fn permission_line_shows_pending_approval() {
+        let mut app = App::new();
+        app.pending_confirm = Some(PendingConfirmation {
+            request_id: "req-1".into(),
+            tool_name: "disk.format".into(),
+            description: "Format disk".into(),
+            params: serde_json::json!({}),
+            safety_level: SafetyLevel::Dangerous,
+        });
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("approval needed"));
+        assert!(text.contains("disk.format"));
+    }
+
+    #[test]
+    fn editing_mode_positions_cursor_at_end_of_input() {
+        let mut app = App::new();
+        app.input_mode = InputMode::Editing;
+        app.input = "check disk".into();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        // Layout heights 1 + 24 + 1 + 3 + 1: input area starts at y=26,
+        // cursor goes on the line below its top rule: x = 0 + 2 + 10.
+        terminal.backend_mut().assert_cursor_position(Position::new(12, 27));
+    }
+
+    #[test]
+    fn normal_mode_hides_cursor() {
+        let mut app = App::new();
+        app.input_mode = InputMode::Normal;
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &app)).unwrap();
+        terminal
+            .backend_mut()
+            .assert_cursor_position(Position::ORIGIN);
+    }
 }

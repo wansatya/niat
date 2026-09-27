@@ -7,7 +7,10 @@ mod agent_client;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste,
+        EnableMouseCapture, Event, KeyCode, KeyModifiers,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -50,7 +53,8 @@ async fn main() -> Result<()> {
         crossterm::cursor::MoveTo(0, 0),
         EnterAlternateScreen,
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-        EnableMouseCapture
+        EnableMouseCapture,
+        EnableBracketedPaste
     )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -68,6 +72,7 @@ async fn main() -> Result<()> {
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
+        DisableBracketedPaste,
         LeaveAlternateScreen,
         DisableMouseCapture,
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
@@ -103,7 +108,11 @@ async fn run_app(
         terminal.draw(|f| ui::draw(f, app))?;
 
         if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
+            match event::read()? {
+                Event::Paste(text) => {
+                    app.paste_text(&text);
+                }
+                Event::Key(key) => {
                 match app.input_mode {
                     InputMode::Normal => match key.code {
                         KeyCode::Char('q') | KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -119,7 +128,7 @@ async fn run_app(
                         KeyCode::F(2) => {
                             // Shell breakout
                             disable_raw_mode()?;
-                            execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
+                            execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen, DisableMouseCapture)?;
 
                             info!("Switching to fallback shell");
                             let _ = std::process::Command::new("/bin/sh").status();
@@ -129,7 +138,8 @@ async fn run_app(
                                 io::stdout(),
                                 EnterAlternateScreen,
                                 crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-                                EnableMouseCapture
+                                EnableMouseCapture,
+                                EnableBracketedPaste
                             )?;
                             terminal.clear()?;
                         }
@@ -167,7 +177,7 @@ async fn run_app(
                             KeyCode::F(2) => {
                                 // Shell breakout
                                 disable_raw_mode()?;
-                                execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
+                                execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen, DisableMouseCapture)?;
 
                                 info!("Switching to fallback shell");
                                 let _ = std::process::Command::new("/bin/sh").status();
@@ -177,7 +187,8 @@ async fn run_app(
                                     io::stdout(),
                                     EnterAlternateScreen,
                                     crossterm::terminal::Clear(crossterm::terminal::ClearType::All),
-                                    EnableMouseCapture
+                                    EnableMouseCapture,
+                                    EnableBracketedPaste
                                 )?;
                                 terminal.clear()?;
                             }
@@ -266,6 +277,8 @@ async fn run_app(
                         }
                     }
                 }
+                }
+                _ => {}
             }
         }
 
