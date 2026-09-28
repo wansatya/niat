@@ -1,4 +1,4 @@
-//! TUI rendering — lean transcript UI in warm espresso tones.
+//! TUI rendering — DOS-styled console UI (CP437-era look).
 
 use crate::app::{App, ConfigField, InputMode, MessageSender, PendingConfirmation};
 use niat_common::types::{SafetyLevel, NIAT_VERSION};
@@ -10,24 +10,24 @@ use ratatui::{
     Frame,
 };
 
-const APP_BG: Color = Color::Rgb(23, 17, 12);
-const PANEL_BG: Color = Color::Rgb(38, 28, 20);
-const FIELD_BG: Color = Color::Rgb(25, 18, 13);
-const CHIP_BG: Color = Color::Rgb(58, 44, 32);
-const INK: Color = Color::Rgb(26, 19, 13);
-const CLAY_RED: Color = Color::Rgb(140, 74, 54);
-const FG: Color = Color::Rgb(235, 219, 196);
-const DIM: Color = Color::Rgb(168, 142, 112);
-const FAINT: Color = Color::Rgb(108, 86, 64);
-const ACCENT: Color = Color::Rgb(222, 164, 100);
-const ACCENT_DIM: Color = Color::Rgb(176, 124, 70);
-const GREEN: Color = Color::Rgb(154, 178, 128);
-const YELLOW: Color = Color::Rgb(232, 185, 100);
-const RED: Color = Color::Rgb(210, 120, 95);
-const ROSE: Color = Color::Rgb(201, 144, 133);
-const BORDER: Color = Color::Rgb(74, 58, 42);
-const BORDER_FOCUS: Color = Color::Rgb(150, 110, 70);
-const RULE: Color = Color::Rgb(50, 38, 27);
+// DOS-style chrome on an eye-friendly near-black desktop (no blue flood).
+const APP_BG: Color = Color::Rgb(16, 16, 16);
+const PANEL_BG: Color = Color::Rgb(16, 16, 16);
+const FIELD_BG: Color = Color::Rgb(0, 0, 0);
+const BAR_BG: Color = Color::Rgb(170, 170, 170);
+const INK: Color = Color::Rgb(0, 0, 0);
+const FG: Color = Color::Rgb(255, 255, 255);
+const DIM: Color = Color::Rgb(170, 170, 170);
+const FAINT: Color = Color::Rgb(0, 170, 170);
+const ACCENT: Color = Color::Rgb(255, 255, 85);
+const GREEN: Color = Color::Rgb(85, 255, 85);
+const YELLOW: Color = Color::Rgb(255, 255, 85);
+const RED: Color = Color::Rgb(255, 85, 85);
+const TOOL: Color = Color::Rgb(85, 255, 255);
+const DANGER: Color = Color::Rgb(170, 0, 0);
+const BORDER: Color = Color::Rgb(170, 170, 170);
+const BORDER_FOCUS: Color = Color::Rgb(255, 255, 85);
+const RULE: Color = Color::Rgb(170, 85, 0);
 
 fn dim() -> Style {
     Style::default().fg(DIM)
@@ -67,18 +67,18 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let (dot, dot_color, net_label) = if app.connected {
-        ("●", GREEN, "connected")
+    // DOS menu bar: reverse-video strip with brand chip and status.
+    let bar = Style::default().fg(INK).bg(BAR_BG);
+    let state = if app.connected {
+        Span::styled(" ONLINE ", Style::default().fg(INK).bg(GREEN).add_modifier(Modifier::BOLD))
     } else {
-        ("○", RED, "offline")
+        Span::styled(" OFFLINE ", Style::default().fg(FG).bg(DANGER).add_modifier(Modifier::BOLD))
     };
     let left = Line::from(vec![
-        Span::styled(" niat", Style::default().fg(FG).add_modifier(Modifier::BOLD)),
-        Span::styled(format!(" v{} ", NIAT_VERSION), dim()),
-        Span::styled("· ", faint()),
-        Span::styled(format!("{} {} ", dot, net_label), Style::default().fg(dot_color)),
-        Span::styled("· ", faint()),
-        Span::styled(app.config.model.model.clone(), Style::default().fg(ACCENT)),
+        Span::styled(" NIAT ", Style::default().fg(ACCENT).bg(APP_BG).add_modifier(Modifier::BOLD)),
+        Span::styled(format!(" v{} ", NIAT_VERSION), bar),
+        state,
+        Span::styled(format!(" {} ", app.config.model.model), bar),
     ]);
     let right_text = match &app.status {
         Some(s) => {
@@ -94,8 +94,11 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(10), Constraint::Length(32)])
         .split(area);
-    f.render_widget(Paragraph::new(left), cols[0]);
-    f.render_widget(Paragraph::new(Line::from(Span::styled(right_text, faint()))).alignment(Alignment::Right), cols[1]);
+    f.render_widget(Paragraph::new(left).style(bar), cols[0]);
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(right_text, bar))).alignment(Alignment::Right).style(bar),
+        cols[1],
+    );
 }
 
 fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
@@ -136,14 +139,14 @@ fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
             MessageSender::System => {
                 for content_line in &content_lines {
                     lines.push(Line::from(vec![
-                        Span::styled("· ", faint()),
+                        Span::styled("* ", faint()),
                         Span::styled(*content_line, dim()),
                     ]));
                 }
             }
             MessageSender::Success => {
                 for (j, content_line) in content_lines.iter().enumerate() {
-                    let prefix = if j == 0 { "✓ " } else { "  " };
+                    let prefix = if j == 0 { "[OK] " } else { "     " };
                     lines.push(Line::from(vec![
                         Span::styled(prefix, Style::default().fg(GREEN)),
                         Span::styled(*content_line, Style::default().fg(FG)),
@@ -152,7 +155,7 @@ fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
             }
             MessageSender::Error => {
                 for (j, content_line) in content_lines.iter().enumerate() {
-                    let prefix = if j == 0 { "✗ " } else { "  " };
+                    let prefix = if j == 0 { "[ERR] " } else { "      " };
                     lines.push(Line::from(vec![
                         Span::styled(prefix, Style::default().fg(RED)),
                         Span::styled(*content_line, Style::default().fg(FG)),
@@ -161,10 +164,10 @@ fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
             }
             MessageSender::Tool(name) => {
                 lines.push(Line::from(vec![
-                    Span::styled("⚙ ", Style::default().fg(ROSE)),
+                    Span::styled(">> ", Style::default().fg(TOOL)),
                     Span::styled(
                         name.as_str(),
-                        Style::default().fg(ROSE).add_modifier(Modifier::BOLD),
+                        Style::default().fg(TOOL).add_modifier(Modifier::BOLD),
                     ),
                 ]));
                 for content_line in &content_lines {
@@ -188,58 +191,53 @@ fn draw_permission_line(f: &mut Frame, app: &App, area: Rect) {
     let line = if let Some(confirm) = &app.pending_confirm {
         Line::from(vec![
             Span::styled(
-                " ! approval needed: ",
+                " ! APPROVAL NEEDED: ",
                 Style::default().fg(YELLOW).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 confirm.tool_name.clone(),
-                Style::default().fg(ROSE).add_modifier(Modifier::BOLD),
+                Style::default().fg(TOOL).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(format!(" — {} ", confirm.description), dim()),
-            Span::styled("[Y] approve", Style::default().fg(GREEN)),
-            Span::styled(" · ", faint()),
-            Span::styled("[N] deny", Style::default().fg(RED)),
+            Span::styled(format!(" -- {} ", confirm.description), dim()),
+            Span::styled("[Y]Approve", Style::default().fg(GREEN).add_modifier(Modifier::BOLD)),
+            Span::styled("  ", dim()),
+            Span::styled("[N]Deny", Style::default().fg(RED).add_modifier(Modifier::BOLD)),
         ])
     } else if !app.connected {
         Line::from(vec![
-            Span::styled(" ○ standalone", faint()),
+            Span::styled("* STANDALONE", dim()),
             Span::styled(
-                " — agent offline, F2 for shell · :config to setup · :help for commands",
-                dim(),
+                " -- agent offline, F2 shell | :config setup | :help commands",
+                faint(),
             ),
         ])
     } else {
         Line::from(vec![
-            Span::styled(" ◆ ", Style::default().fg(ACCENT_DIM)),
-            Span::styled("intent mode", dim()),
-            Span::styled(" — type below · Enter to send · F3 config · F2 shell", faint()),
+            Span::styled("* ", faint()),
+            Span::styled("READY", dim()),
+            Span::styled(" -- type below, Enter sends | F3 config | F2 shell", faint()),
         ])
     };
     f.render_widget(Paragraph::new(line), area);
 }
 
 fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
-    // Lean composer: a top row-border only, no side borders or boxes.
+    // DOS command line under a double rule.
     let (rule_color, placeholder) = match app.input_mode {
         InputMode::Normal => (RULE, "Press Enter to type..."),
-        InputMode::Editing => (BORDER_FOCUS, "State your intent or type :help..."),
+        InputMode::Editing => (BORDER_FOCUS, "Type intent and press Enter..."),
         InputMode::ConfigModal => (RULE, "Configuration in progress..."),
     };
 
+    let prompt = Span::styled(
+        "> ",
+        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+    );
     let content = if app.input.is_empty() {
-        Line::from(vec![
-            Span::styled(
-                "> ",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(placeholder, dim()),
-        ])
+        Line::from(vec![prompt, Span::styled(placeholder, faint())])
     } else {
         Line::from(vec![
-            Span::styled(
-                "> ",
-                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-            ),
+            prompt,
             Span::styled(app.input.as_str(), Style::default().fg(FG)),
         ])
     };
@@ -247,6 +245,7 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
     let input = Paragraph::new(content).block(
         Block::default()
             .borders(Borders::TOP)
+            .border_type(BorderType::Double)
             .border_style(Style::default().fg(rule_color)),
     );
     f.render_widget(input, area);
@@ -256,45 +255,40 @@ fn draw_input(f: &mut Frame, app: &App, area: Rect) -> Option<Position> {
     }
 
     // Cursor at the end of the input, on the line below the top rule.
-    // The visible prefix is "> " (2 cells).
+    // The visible prefix "> " is 2 cells wide.
     let input_width: u16 = app.input.chars().count().min(u16::MAX as usize) as u16;
     let x = (area.x + 2 + input_width).min(area.x + area.width.saturating_sub(1));
     Some(Position::new(x, area.y + 1))
 }
 
 fn draw_footer(f: &mut Frame, _app: &App, area: Rect) {
-    // Lean key hints: subtle chips, lowercase labels, dot separators.
-    let chip = |t: &'static str| {
+    // DOS status bar: gray strip with `KEY=Action` hints.
+    let bar = Style::default().bg(BAR_BG);
+    let key = |t: &'static str| {
         Span::styled(
             t,
-            Style::default().fg(FG).bg(CHIP_BG).add_modifier(Modifier::BOLD),
+            Style::default().fg(ACCENT).bg(APP_BG).add_modifier(Modifier::BOLD),
         )
     };
-    let label = |t: &'static str| Span::styled(t, dim());
-    let sep = Span::styled(" · ", faint());
+    let item = |t: &'static str| Span::styled(t, Style::default().fg(INK).bg(BAR_BG));
     let shortcuts = Line::from(vec![
-        chip(" Enter "),
-        label(" send "),
-        sep.clone(),
-        chip(" F3 "),
-        label(" config "),
-        sep.clone(),
-        chip(" F2 "),
-        label(" shell "),
-        sep.clone(),
-        chip(" :reboot "),
-        label(" reboot "),
-        sep.clone(),
-        chip(" Ctrl+C "),
-        label(" force reboot "),
-        sep,
-        chip(" :help "),
-        label(" help "),
+        key(" Enter "),
+        item("=Send  "),
+        key(" F3 "),
+        item("=Config  "),
+        key(" F5 "),
+        item("=Reload  "),
+        key(" F2 "),
+        item("=Shell  "),
+        key(" Ctrl+C "),
+        item("=Reboot  "),
+        key(" :help "),
+        item("=Help"),
     ]);
 
     let footer = Paragraph::new(shortcuts)
         .alignment(Alignment::Center)
-        .style(Style::default().bg(APP_BG));
+        .style(bar);
     f.render_widget(footer, area);
 }
 
@@ -325,15 +319,15 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
         .margin(1)
         .split(modal_area);
 
-    // Frame box
+    // DOS dialog: double yellow border with a reverse-video title.
     let frame_block = Block::default()
         .title(Span::styled(
-            " Model & API configuration ",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            " Configuration ",
+            Style::default().fg(INK).bg(ACCENT).add_modifier(Modifier::BOLD),
         ))
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(BorderType::Double)
         .border_style(Style::default().fg(ACCENT))
         .style(Style::default().bg(PANEL_BG));
     f.render_widget(frame_block, modal_area);
@@ -350,9 +344,9 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Field 1: Base URL
     let url_active = modal.active_field == ConfigField::BaseUrl;
     let url_block = Block::default()
-        .title(if url_active { " ▶ API base URL " } else { " API base URL " })
+        .title(if url_active { "[>] API base URL " } else { " API base URL " })
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(BorderType::Plain)
         .border_style(Style::default().fg(if url_active { YELLOW } else { BORDER }))
         .style(Style::default().bg(FIELD_BG));
     let url_text = if modal.base_url.is_empty() && url_active {
@@ -373,9 +367,9 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Field 2: Model Name
     let model_active = modal.active_field == ConfigField::Model;
     let model_block = Block::default()
-        .title(if model_active { " ▶ Model name " } else { " Model name " })
+        .title(if model_active { "[>] Model name " } else { " Model name " })
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(BorderType::Plain)
         .border_style(Style::default().fg(if model_active { YELLOW } else { BORDER }))
         .style(Style::default().bg(FIELD_BG));
     let model_text = if modal.model.is_empty() && model_active {
@@ -396,9 +390,9 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Field 3: API Key
     let key_active = modal.active_field == ConfigField::ApiKey;
     let key_block = Block::default()
-        .title(if key_active { " ▶ API key · Ctrl+T reveals " } else { " API key " })
+        .title(if key_active { "[>] API key " } else { " API key " })
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
+        .border_type(BorderType::Plain)
         .border_style(Style::default().fg(if key_active { YELLOW } else { BORDER }))
         .style(Style::default().bg(FIELD_BG));
 
@@ -433,10 +427,10 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     let buttons_line = Line::from(vec![
         Span::raw("    "),
         Span::styled(
-            if save_active { "[ Save & apply (Enter) ]" } else { "[ Save & apply ]" },
+            if save_active { "[ Save (Enter) ]" } else { "[ Save ]" },
             Style::default()
-                .fg(if save_active { INK } else { FG })
-                .bg(if save_active { ACCENT } else { CHIP_BG })
+                .fg(if save_active { INK } else { DIM })
+                .bg(if save_active { ACCENT } else { FIELD_BG })
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("        "),
@@ -444,7 +438,7 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
             if cancel_active { "[ Cancel (Esc) ]" } else { "[ Cancel ]" },
             Style::default()
                 .fg(if cancel_active { FG } else { DIM })
-                .bg(if cancel_active { CLAY_RED } else { CHIP_BG })
+                .bg(if cancel_active { DANGER } else { FIELD_BG })
                 .add_modifier(Modifier::BOLD),
         ),
     ]);
@@ -453,7 +447,7 @@ fn draw_config_modal(f: &mut Frame, modal: &crate::app::ConfigModalState) {
     // Modal Helper Hint
     let hint = Paragraph::new(Line::from(vec![
         Span::styled(
-            "[Tab / ↑↓] switch field · [Enter] save & apply · [Esc] close",
+            "Tab: switch field | Ctrl+T: reveal key | Enter: save | Esc: close",
             dim(),
         ),
     ])).alignment(Alignment::Center);
@@ -477,13 +471,13 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
     let safety_style = match confirm.safety_level {
         SafetyLevel::Safe => Style::default().fg(INK).bg(GREEN).add_modifier(Modifier::BOLD),
         SafetyLevel::Confirm => Style::default().fg(INK).bg(YELLOW).add_modifier(Modifier::BOLD),
-        SafetyLevel::Dangerous => Style::default().fg(FG).bg(CLAY_RED).add_modifier(Modifier::BOLD),
+        SafetyLevel::Dangerous => Style::default().fg(FG).bg(DANGER).add_modifier(Modifier::BOLD),
     };
 
     let safety_label = match confirm.safety_level {
-        SafetyLevel::Safe => " ✓ safe operation ",
-        SafetyLevel::Confirm => " ! needs confirmation ",
-        SafetyLevel::Dangerous => " !! dangerous operation ",
+        SafetyLevel::Safe => " [ SAFE ] ",
+        SafetyLevel::Confirm => " [ CONFIRM ] ",
+        SafetyLevel::Dangerous => " [ DANGER ] ",
     };
 
     let params_str = serde_json::to_string(&confirm.params).unwrap_or_default();
@@ -491,27 +485,27 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
     let lines = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  status: ", dim()),
+            Span::styled("  Status: ", dim()),
             Span::styled(safety_label, safety_style),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  tool: ", dim()),
+            Span::styled("  Tool: ", dim()),
             Span::styled(&confirm.tool_name, Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(vec![
-            Span::styled("  intent: ", dim()),
+            Span::styled("  Action: ", dim()),
             Span::styled(&confirm.description, Style::default().fg(FG)),
         ]),
         Line::from(vec![
-            Span::styled("  params: ", dim()),
+            Span::styled("  Args: ", dim()),
             Span::styled(params_str, dim()),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("   [Y] approve & run   ", Style::default().fg(INK).bg(GREEN).add_modifier(Modifier::BOLD)),
+            Span::styled(" [Y] Approve ", Style::default().fg(INK).bg(GREEN).add_modifier(Modifier::BOLD)),
             Span::raw("    "),
-            Span::styled("   [N] deny   ", Style::default().fg(FG).bg(CLAY_RED).add_modifier(Modifier::BOLD)),
+            Span::styled(" [N] Deny ", Style::default().fg(FG).bg(DANGER).add_modifier(Modifier::BOLD)),
         ]),
     ];
 
@@ -519,13 +513,13 @@ fn draw_confirm_modal(f: &mut Frame, confirm: &PendingConfirmation) {
         .block(
             Block::default()
                 .title(Span::styled(
-                    " ! confirmation required ",
-                    Style::default().fg(YELLOW).add_modifier(Modifier::BOLD),
+                    " Confirmation ",
+                    Style::default().fg(FG).bg(DANGER).add_modifier(Modifier::BOLD),
                 ))
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(YELLOW))
+                .border_type(BorderType::Double)
+                .border_style(Style::default().fg(DANGER))
                 .style(Style::default().bg(PANEL_BG)),
         )
         .wrap(Wrap { trim: true });
@@ -550,29 +544,31 @@ mod tests {
     }
 
     #[test]
-    fn draws_lean_workspace_without_box_borders() {
+    fn draws_dos_desktop_without_modern_glyphs() {
         let app = App::new();
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| draw(f, &app)).unwrap();
         let text = buffer_text(&terminal);
-        // Lean transcript: welcome lines, no boxed chrome, no message dividers.
+        // DOS desktop: welcome lines, blue backdrop, gray menu/status bars.
         assert!(text.contains("Welcome! Type your intent"));
-        // The only horizontal rule in the frame is the input's top border.
-        assert_eq!(text.matches('─').count(), 100);
-        assert!(text.contains("standalone"));
-        // Warm espresso backdrop fills the frame; lean footer hints are present.
+        assert!(text.contains("Made in Indonesia"));
+        // The only horizontal rule in the frame is the input's double top border.
+        assert_eq!(text.matches('═').count(), 100);
+        assert!(text.contains("STANDALONE"));
         assert_eq!(terminal.backend().buffer()[(0, 0)].bg, APP_BG);
-        for hint in ["send", "shell", "force reboot"] {
+        assert_eq!(terminal.backend().buffer()[(90, 0)].bg, BAR_BG);
+        assert_eq!(terminal.backend().buffer()[(0, 10)].bg, APP_BG);
+        for hint in ["=Send", "=Shell", "=Reboot", "=Reload", "F5"] {
             assert!(text.contains(hint), "footer must hint at {hint:?}");
         }
-        for heavy in ["◈", "❯ YOU", "◆ NIAT AGENT", "│", "▎", "╭", "╰", "⚠", "⛔", "✔", "◀"] {
-            assert!(!text.contains(heavy), "lean frame must not contain {heavy:?}");
+        for modern in ["◈", "❯", "✓", "✗", "⚙", "◆", "○", "●", "▶", "⚠", "⛔", "✔", "◀", "╭", "╰", "▎"] {
+            assert!(!text.contains(modern), "DOS frame must not contain {modern:?}");
         }
     }
 
     #[test]
-    fn lean_transcript_styles_each_sender() {
+    fn dos_transcript_styles_each_sender() {
         use crate::app::Message;
         let mut app = App::new();
         app.messages.clear();
@@ -595,7 +591,7 @@ mod tests {
         assert!(text.contains("> hello niat"));
         assert!(text.contains("working on it"));
         assert!(text.contains("disk.check"));
-        assert!(text.contains("✗"));
+        assert!(text.contains("[ERR]"));
         assert!(text.contains("boom"));
         assert!(!text.contains("00:00:00"), "lean transcript shows no timestamps");
     }
@@ -614,7 +610,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| draw(f, &app)).unwrap();
         let text = buffer_text(&terminal);
-        assert!(text.contains("approval needed"));
+        assert!(text.contains("APPROVAL NEEDED"));
         assert!(text.contains("disk.format"));
     }
 

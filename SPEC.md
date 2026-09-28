@@ -650,6 +650,8 @@ dhcp = true
 check_connectivity = true
 ```
 
+> Location: the TUI and agent kernel resolve the live file as `~/.niat/config.toml` first, then `/etc/niat/config.toml`, `/var/lib/niat/config.toml`, and the legacy `/tmp/niat_config.toml`. When the user file is missing it is seeded from the next available file (or defaults) and used going forward; the shipped `/etc/niat/config.toml` acts as a seed, never as the sticky live file.
+
 ---
 
 # 26. Resource & Performance Targets

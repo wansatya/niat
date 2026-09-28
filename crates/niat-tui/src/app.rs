@@ -4,6 +4,7 @@ use crate::agent_client::AgentClient;
 use niat_common::config::NiatConfig;
 use niat_common::types::{SafetyLevel, SystemStatus, NIAT_VERSION};
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
@@ -61,6 +62,7 @@ pub struct App {
     pub status: Option<SystemStatus>,
     pub config: NiatConfig,
     pub config_source: Option<PathBuf>,
+    pub config_mtime: Option<SystemTime>,
     pub config_modal: Option<ConfigModalState>,
     pub pending_confirm: Option<PendingConfirmation>,
     pub agent_client: Option<AgentClient>,
@@ -72,7 +74,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let (config, config_source) = NiatConfig::load_persistent();
+        let (config, config_source) = Self::initial_config();
 
         let mut app = Self {
             input: String::new(),
@@ -88,7 +90,9 @@ impl App {
             connected: false,
             should_quit: false,
             should_reboot: false,
+            config_mtime: None,
         };
+        app.track_config_mtime();
 
         app.messages.push(Message {
             sender: MessageSender::System,
@@ -105,8 +109,25 @@ impl App {
             content: "Quick commands: :config (Model & API settings) · :reboot (Restart) · :quit (Reboot) · F2 (Shell)".into(),
             timestamp: now(),
         });
+        app.messages.push(Message {
+            sender: MessageSender::System,
+            content: "Made in Indonesia @ 2026 - Niat Baik Initiative".into(),
+            timestamp: now(),
+        });
 
         app
+    }
+
+    #[cfg(not(test))]
+    fn initial_config() -> (NiatConfig, Option<PathBuf>) {
+        NiatConfig::load_persistent()
+    }
+
+    #[cfg(test)]
+    fn initial_config() -> (NiatConfig, Option<PathBuf>) {
+        // Unit tests must never read or create real config files; tests that
+        // need on-disk config point `config_source` at scratch files instead.
+        (NiatConfig::default(), None)
     }
 
     pub async fn connect_agent(&mut self) {
@@ -159,7 +180,108 @@ impl App {
     pub fn persist_config(&mut self) -> anyhow::Result<PathBuf> {
         let path = self.config.save_persistent(self.config_source.as_deref())?;
         self.config_source = Some(path.clone());
+        self.track_config_mtime();
         Ok(path)
+    }
+
+    /// Reload configuration from disk and apply it when it differs from the
+    /// live state, syncing the agent kernel. Manual refreshes (F5) always
+    /// report; automatic ones stay silent unless something changed.
+    pub async fn refresh_config(&mut self, manual: bool) {
+        let (config, source) = self.reload_active_config();
+        let changed = config.model != self.config.model;
+        self.config = config;
+        self.config_source = source.clone();
+        self.track_config_mtime();
+        if changed {
+            if let Some(client) = &mut self.agent_client {
+                let _ = client
+                    .send_update_config(
+                        Some(self.config.model.base_url.clone()),
+                        Some(self.config.model.model.clone()),
+                        Some(self.config.model.api_key.clone().unwrap_or_default()),
+                    )
+                    .await;
+            }
+            self.messages.push(Message {
+                sender: MessageSender::Success,
+                content: format!(
+                    "Configuration reloaded from {}: model='{}', url='{}', key={}.",
+                    config_source_label(&source),
+                    self.config.model.model,
+                    self.config.model.base_url,
+                    if self.config.model.api_key.is_some() { "set" } else { "none" },
+                ),
+                timestamp: now(),
+            });
+        } else if manual {
+            self.messages.push(Message {
+                sender: MessageSender::System,
+                content: format!(
+                    "Configuration already up to date ({}).",
+                    config_source_label(&source)
+                ),
+                timestamp: now(),
+            });
+        }
+    }
+
+    /// Re-read config from disk into the open modal's fields (F5 in the
+    /// modal). The agent sync still happens on save, as usual.
+    pub fn refresh_modal_from_disk(&mut self) {
+        let (config, source) = self.reload_active_config();
+        if let Some(modal) = &mut self.config_modal {
+            modal.base_url = config.model.base_url.clone();
+            modal.model = config.model.model.clone();
+            modal.api_key = config.model.api_key.clone().unwrap_or_default();
+        }
+        self.messages.push(Message {
+            sender: MessageSender::System,
+            content: format!("Modal fields reloaded from {}.", config_source_label(&source)),
+            timestamp: now(),
+        });
+    }
+
+    /// Called every event-loop iteration: adopt external edits to the config
+    /// file. Skipped while the modal holds its own snapshot, and silent
+    /// unless values actually changed (so the agent kernel's own save-back
+    /// after our updates causes no feedback loop).
+    pub async fn poll_config_file(&mut self) {
+        if self.input_mode == InputMode::ConfigModal {
+            return;
+        }
+        let current = self
+            .config_source
+            .as_ref()
+            .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+        let adopted = match (self.config_mtime, current) {
+            (Some(tracked), Some(seen)) => seen > tracked,
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if adopted {
+            self.refresh_config(false).await;
+        }
+    }
+
+    /// Re-read the config file we loaded (when it still exists and parses),
+    /// else fall back to the standard candidates.
+    fn reload_active_config(&self) -> (NiatConfig, Option<PathBuf>) {
+        if let Some(p) = &self.config_source {
+            if p.exists() {
+                if let Ok(cfg) = NiatConfig::load(p) {
+                    return (cfg, Some(p.clone()));
+                }
+            }
+        }
+        NiatConfig::load_persistent()
+    }
+
+    fn track_config_mtime(&mut self) {
+        self.config_mtime = self
+            .config_source
+            .as_ref()
+            .and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
     }
 
     pub async fn save_config_modal(&mut self) {
@@ -390,10 +512,11 @@ impl App {
                     self.messages.push(Message {
                         sender: MessageSender::System,
                         content: format!(
-                            "Current Configuration:\n  • API URL: {}\n  • Model: {}\n  • API Key: {}",
+                            "Current Configuration:\n  • API URL: {}\n  • Model: {}\n  • API Key: {}\n  • Source: {}",
                             self.config.model.base_url,
                             self.config.model.model,
-                            key_status
+                            key_status,
+                            config_source_label(&self.config_source)
                         ),
                         timestamp: now(),
                     });
@@ -434,6 +557,7 @@ impl App {
                         "",
                         "Keyboard Shortcuts:",
                         "  F3                 Open API & Model Configuration modal",
+                        "  F5                 Reload configuration from disk",
                         "  F2                 Direct breakout to emergency shell",
                         "  Ctrl+L             Clear screen messages",
                         "  Ctrl+C / Ctrl+Q    Force reboot operating system",
@@ -547,6 +671,13 @@ fn now() -> String {
     chrono::Local::now().format("%H:%M:%S").to_string()
 }
 
+fn config_source_label(source: &Option<PathBuf>) -> String {
+    source
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "defaults".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -611,5 +742,96 @@ mod tests {
         let reloaded = NiatConfig::load(&path).unwrap();
         assert_eq!(reloaded.model.model, "persisted-model");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn write_refresh_fixture(path: &std::path::Path, model: &str, key: Option<&str>) {
+        let mut cfg = NiatConfig::default();
+        cfg.model.model = model.into();
+        cfg.model.api_key = key.map(|k| k.into());
+        cfg.save(path).unwrap();
+    }
+
+    fn refresh_scratch(tag: &str) -> std::path::PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("niat-refresh-test-{}-{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("config.toml")
+    }
+
+    #[tokio::test]
+    async fn refresh_applies_external_config_change() {
+        let path = refresh_scratch("apply");
+        write_refresh_fixture(&path, "external-model", Some("sk-ext"));
+
+        let mut app = App::new();
+        app.config_source = Some(path.clone());
+        app.config.model.model = "stale-model".into();
+        let before = app.messages.len();
+        app.refresh_config(false).await;
+        assert_eq!(app.config.model.model, "external-model");
+        assert_eq!(app.config.model.api_key.as_deref(), Some("sk-ext"));
+        assert_eq!(app.messages.len(), before + 1);
+        assert!(app.messages.last().unwrap().content.contains("reloaded"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn refresh_reports_up_to_date_when_manual_and_unchanged() {
+        let path = refresh_scratch("noop");
+        write_refresh_fixture(&path, "same-model", None);
+
+        let mut app = App::new();
+        app.config_source = Some(path.clone());
+        app.config.model = NiatConfig::load(&path).unwrap().model;
+        let before = app.messages.len();
+        app.refresh_config(false).await;
+        assert_eq!(app.messages.len(), before);
+        app.refresh_config(true).await;
+        assert_eq!(app.messages.len(), before + 1);
+        assert!(app.messages.last().unwrap().content.contains("up to date"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn poll_config_file_picks_up_external_edit() {
+        let path = refresh_scratch("poll");
+        write_refresh_fixture(&path, "v1-model", None);
+
+        let mut app = App::new();
+        app.config_source = Some(path.clone());
+        app.config.model = NiatConfig::load(&path).unwrap().model;
+        app.track_config_mtime();
+        let before = app.messages.len();
+        app.poll_config_file().await;
+        assert_eq!(app.messages.len(), before);
+
+        // External edit, with a forced-old tracked mtime to avoid tick flakiness.
+        write_refresh_fixture(&path, "v2-model", None);
+        app.config_mtime = Some(std::time::SystemTime::UNIX_EPOCH);
+        app.poll_config_file().await;
+        assert_eq!(app.config.model.model, "v2-model");
+        assert_eq!(app.messages.len(), before + 1);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn modal_refresh_reloads_fields_from_disk() {
+        let path = refresh_scratch("modal");
+        write_refresh_fixture(&path, "modal-model", Some("sk-modal"));
+
+        let mut app = App::new();
+        app.config_source = Some(path.clone());
+        app.open_config_modal();
+        let modal = app.config_modal.as_mut().unwrap();
+        modal.base_url.clear();
+        modal.model.clear();
+        modal.api_key.clear();
+        app.refresh_modal_from_disk();
+        let modal = app.config_modal.as_ref().unwrap();
+        assert_eq!(modal.model, "modal-model");
+        assert_eq!(modal.api_key, "sk-modal");
+        assert!(app.messages.last().unwrap().content.contains("Modal fields reloaded"));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

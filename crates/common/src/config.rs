@@ -165,6 +165,12 @@ impl NiatConfig {
         }
         let serialized = toml::to_string_pretty(self)?;
         std::fs::write(path, serialized)?;
+        // The file holds an API key: restrict to owner-only, best effort.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
         Ok(())
     }
 
@@ -212,8 +218,24 @@ impl NiatConfig {
 
     /// Load the first candidate that exists and parses, else defaults.
     /// Returns the config plus the path it was loaded from, if any.
+    /// The live file always converges on the first save target
+    /// (`~/.niat/config.toml`): when it is missing, it is seeded with
+    /// whatever was found (or defaults) and used going forward, so a
+    /// shipped system file only ever acts as a seed. Existing files are
+    /// never overwritten.
     pub fn load_persistent() -> (Self, Option<PathBuf>) {
-        Self::load_from_first(&Self::load_candidates())
+        Self::load_persistent_from(&Self::load_candidates(), &Self::save_targets(None))
+    }
+
+    fn load_persistent_from(candidates: &[PathBuf], save_targets: &[PathBuf]) -> (Self, Option<PathBuf>) {
+        let (cfg, source) = Self::load_from_first(candidates);
+        if let Some(seed) = save_targets.first() {
+            if source.as_ref() != Some(seed) && !seed.exists() && cfg.save(seed).is_ok() {
+                tracing::info!("Seeded config at {}", seed.display());
+                return (cfg, Some(seed.clone()));
+            }
+        }
+        (cfg, source)
     }
 
     fn load_from_first(paths: &[PathBuf]) -> (Self, Option<PathBuf>) {
@@ -378,8 +400,83 @@ mod tests {
         let loaded = NiatConfig::load(&writable).unwrap();
         assert_eq!(loaded.model.model, "roundtrip-model");
         assert_eq!(loaded.model.api_key.as_deref(), Some("sk-roundtrip"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&writable).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "config file must be owner-only");
+        }
 
         assert!(cfg.save_to_first_writable(&[]).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn first_load_materializes_default_config() {
+        let dir = scratch_dir("materialize");
+        let target = dir.join(".niat/config.toml");
+        let (cfg, source) =
+            NiatConfig::load_persistent_from(&[dir.join("missing.toml")], &[target.clone()]);
+        assert_eq!(cfg.model.model, NiatConfig::default().model.model);
+        assert_eq!(source, Some(target.clone()));
+        assert!(target.exists(), "default config must be written on first load");
+        let reloaded = NiatConfig::load(&target).unwrap();
+        assert_eq!(reloaded.model.model, cfg.model.model);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn system_config_seeds_missing_user_file() {
+        let dir = scratch_dir("seed");
+        let system = dir.join("etc/config.toml");
+        let mut cfg = NiatConfig::default();
+        cfg.model.model = "system-model".into();
+        cfg.save(&system).unwrap();
+        let user = dir.join(".niat/config.toml");
+
+        let (loaded, source) =
+            NiatConfig::load_persistent_from(&[user.clone(), system.clone()], &[user.clone()]);
+        assert_eq!(source, Some(user.clone()));
+        assert_eq!(loaded.model.model, "system-model");
+        // Seeded with the system file's values; the system file is untouched.
+        assert_eq!(NiatConfig::load(&user).unwrap().model.model, "system-model");
+        assert_eq!(NiatConfig::load(&system).unwrap().model.model, "system-model");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corrupt_fallback_seeds_defaults_and_leaves_corrupt_file() {
+        let dir = scratch_dir("corrupt-seed");
+        let corrupt = dir.join("config.toml");
+        std::fs::write(&corrupt, "not = [valid toml").unwrap();
+        let user = dir.join(".niat/config.toml");
+
+        let (loaded, source) =
+            NiatConfig::load_persistent_from(&[corrupt.clone()], &[user.clone()]);
+        assert_eq!(source, Some(user.clone()));
+        assert_eq!(loaded.model.model, NiatConfig::default().model.model);
+        assert!(user.exists());
+        assert_eq!(std::fs::read_to_string(&corrupt).unwrap(), "not = [valid toml");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn existing_seed_target_is_never_overwritten() {
+        let dir = scratch_dir("no-overwrite");
+        let seed = dir.join(".niat/config.toml");
+        std::fs::create_dir_all(seed.parent().unwrap()).unwrap();
+        std::fs::write(&seed, "not = [valid toml").unwrap();
+        let system = dir.join("etc/config.toml");
+        let mut cfg = NiatConfig::default();
+        cfg.model.model = "system-model".into();
+        cfg.save(&system).unwrap();
+
+        let (loaded, source) =
+            NiatConfig::load_persistent_from(&[seed.clone(), system.clone()], &[seed.clone()]);
+        // Corrupt seed is skipped, the system file is used, seed untouched.
+        assert_eq!(source, Some(system.clone()));
+        assert_eq!(loaded.model.model, "system-model");
+        assert_eq!(std::fs::read_to_string(&seed).unwrap(), "not = [valid toml");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

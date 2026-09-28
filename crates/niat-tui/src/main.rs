@@ -125,6 +125,9 @@ async fn run_app(
                         KeyCode::F(3) => {
                             app.open_config_modal();
                         }
+                        KeyCode::F(5) => {
+                            app.refresh_config(true).await;
+                        }
                         KeyCode::F(2) => {
                             // Shell breakout
                             disable_raw_mode()?;
@@ -174,6 +177,9 @@ async fn run_app(
                             KeyCode::F(3) => {
                                 app.open_config_modal();
                             }
+                            KeyCode::F(5) => {
+                                app.refresh_config(true).await;
+                            }
                             KeyCode::F(2) => {
                                 // Shell breakout
                                 disable_raw_mode()?;
@@ -216,6 +222,9 @@ async fn run_app(
                     InputMode::ConfigModal => {
                         if let Some(modal) = &mut app.config_modal {
                             match key.code {
+                                KeyCode::F(5) => {
+                                    app.refresh_modal_from_disk();
+                                }
                                 KeyCode::Esc => {
                                     app.close_config_modal();
                                 }
@@ -284,5 +293,8 @@ async fn run_app(
 
         // Process any pending responses from agent
         app.poll_responses().await;
+
+        // Adopt external edits to the config file (mtime watch)
+        app.poll_config_file().await;
     }
 }

@@ -129,15 +129,19 @@ exec < /dev/console > /dev/console 2>&1
 
 # ANSI styling helpers
 GREEN="\033[1;32m"
-CYAN="\033[1;36m"
+AMBER="\033[1;33m"
+BROWN="\033[0;33m"
 YELLOW="\033[1;33m"
 RESET="\033[0m"
 
-printf "${CYAN}\n"
-printf "  _   _ ___    _  _____ \n"
-printf " | \ | |_ _|  / \|_   _|  NIAT OS\n"
-printf " |  \| || |  / _ \ | |    Intent-Driven System\n"
-printf " |_|\__|___|/_/ \_\|_|    v0.1.0\n"
+printf "${AMBER}\n"
+printf "  █  █  ███   █   ███\n"
+printf "  ██ █   █   █ █   █\n"
+printf "  █ ██   █   ███   █\n"
+printf "  █  █  ███  █ █   █\n"
+printf "${BROWN}\n"
+printf "  intent-driven operating system · v0.1.0\n"
+printf "  Made in Indonesia @ 2026 - Niat Baik Initiative\n"
 printf "${RESET}\n\n"
 
 log_step() {

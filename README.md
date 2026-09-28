@@ -1,3 +1,12 @@
+```ansi
+█  █  ███   █   ███
+██ █   █   █ █   █
+█ ██   █   ███   █
+█  █  ███  █ █   █
+
+intent-driven operating system · v0.1.0
+```
+
 # NIAT: The Intent-Driven Operating System
 
 **NIAT** is a minimal, headless Linux distribution built using **Buildroot + Linux kernel + BusyBox**, driven by a **Rust-based AI Agent Kernel and TUI** as the primary operating interface.
@@ -95,3 +104,7 @@ niat/
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+*Made in Indonesia @ 2026 - Niat Baik Initiative*
